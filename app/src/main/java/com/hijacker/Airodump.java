@@ -120,6 +120,7 @@ class Airodump{
     static int getChannel(){ return channel; }
     static String getMac(){ return mac; }
     static String getCapFile(){
+        if (QcaBackend.enabled()) return QcaBackend.capturePath();
         while(!capFileObserver.found_cap_file() && writingToFile()){}
         return capFile;
     }
@@ -139,6 +140,7 @@ class Airodump{
         start();
     }
     static void start(){
+        if (QcaBackend.enabled()) { QcaBackend.startCapture(channel, mac); return; }
         // Construct the command
         String cmd = "su -c " + prefix + " " + airodump_dir + " --update 9999999 --write-interval 1 --band ";
 
@@ -196,6 +198,7 @@ class Airodump{
         });
     }
     static void stop(){
+        if (QcaBackend.enabled()) { QcaBackend.cancel(); return; }
         last_action = System.currentTimeMillis();
         running = false;
         capFileObserver.stopWatching();
@@ -222,7 +225,7 @@ class Airodump{
         });
     }
     static boolean isRunning(){
-        return running;
+        return QcaBackend.enabled() ? QcaBackend.isCapturing() : running;
     }
     public static void addAP(String essid, String mac, String enc, String cipher, String auth,
                              int pwr, int beacons, int data, int ivs, int ch){

@@ -50,7 +50,10 @@ import com.google.android.material.snackbar.Snackbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
 import androidx.core.view.GravityCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -182,8 +185,7 @@ public class MainActivity extends AppCompatActivity{
                     stackTrace.append(throwable.getStackTrace()[i].toString()).append('\n');
                 }
 
-                Intent intent = new Intent();
-                intent.setAction("com.hijacker.SendLogActivity");
+                Intent intent = new Intent(MainActivity.this, SendLogActivity.class);
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 intent.putExtra("exception", stackTrace.toString());
                 startActivity(intent);
@@ -199,6 +201,16 @@ public class MainActivity extends AppCompatActivity{
         file_explorer_adapter = new FileExplorerAdapter();
         file_explorer_adapter.setNotifyOnChange(true);
         setContentView(R.layout.activity_main);
+        if(Build.VERSION.SDK_INT>=35){
+            View content = findViewById(R.id.drawer_layout);
+            ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
+                Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                        | WindowInsetsCompat.Type.displayCutout());
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return WindowInsetsCompat.CONSUMED;
+            });
+            ViewCompat.requestApplyInsets(content);
+        }
 
         new SetupTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
     }
@@ -249,6 +261,9 @@ public class MainActivity extends AppCompatActivity{
                     new NavigationView.OnNavigationItemSelectedListener() {
                         @Override
                         public boolean onNavigationItemSelected(MenuItem menuItem) {
+                            if (QcaBackend.enabled() && menuItem.getItemId() != FRAGMENT_AIRODUMP) {
+                                mDrawerLayout.closeDrawers(); QcaBackend.showInfo(MainActivity.this); return true;
+                            }
                             // set item as selected to persist highlight
                             menuItem.setChecked(true);
                             // close drawer when item is tapped
@@ -375,12 +390,13 @@ public class MainActivity extends AppCompatActivity{
             //Load preferences
             publishProgress(getString(R.string.loading_preferences));
             loadPreferences();
+            QcaBackend.applyDefaults();
 
             //Initialize paths
             publishProgress(getString(R.string.init_files));
             path = getFilesDir().getAbsolutePath();
             cap_tmp_path = path + "/cap_tmp";
-            data_path = Environment.getExternalStorageDirectory() + "/Hijacker";
+            data_path = getExternalFilesDir(null).getAbsolutePath() + "/HijackerQCA";
             actions_path = data_path + "/actions";
             wl_path = data_path + "/wordlists";
             cap_path = data_path + "/capture_files";
@@ -399,30 +415,7 @@ public class MainActivity extends AppCompatActivity{
                     dir.mkdir();
                 }
             }
-            //cap file directory used to be set by the user, so move everything to the new location
-            if(pref.contains("cap_dir")){
-                //Move capture files to new directory
-                String old_dir = pref.getString("cap_dir", null);
-                Toast.makeText(MainActivity.this, "Moving cap files from " + old_dir + " to " + cap_path, Toast.LENGTH_SHORT).show();
-                runOne(" mv " + old_dir + "/* " + cap_path + "/ && rmdir " + old_dir);
-
-                pref_edit.remove("cap_dir");
-                pref_edit.apply();
-            }else{
-                //cap directory was never changed so there may be files in /sdcard/cap/
-                File old_dir = new File("/sdcard/cap");
-                if(old_dir.exists() && old_dir.isDirectory()){
-                    File[] files = old_dir.listFiles();
-                    if(files!=null){
-                        Toast.makeText(MainActivity.this, "Moving cap files from " + old_dir.getAbsolutePath() + " to " + cap_path, Toast.LENGTH_LONG).show();
-                        for(File f : old_dir.listFiles()){
-                            //Move all the files to the new directory
-                            f.renameTo(new File(cap_path, f.getName()));
-                        }
-                    }
-                    old_dir.delete();
-                }
-            }
+            // This package owns its own storage; upstream capture directories are not migrated.
 
             //Initialize notifications
             publishProgress(getString(R.string.init_notifications));
@@ -431,12 +424,13 @@ public class MainActivity extends AppCompatActivity{
             Intent stop_intent = new Intent(MainActivity.this, StopReceiver.class);
             Intent notificationIntent = new Intent(MainActivity.this, MainActivity.class);
             notificationIntent.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-            PendingIntent click_intent = PendingIntent.getActivity(MainActivity.this, 0, notificationIntent, 0);
+            PendingIntent click_intent = PendingIntent.getActivity(MainActivity.this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
 
                 // Get a channel ID
             String channelID;
             if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
-                channelID = NotificationChannel.DEFAULT_CHANNEL_ID;
+                channelID = "hijacker-status";
+                mNotificationManager.createNotificationChannel(new NotificationChannel(channelID, "Hijacker status", android.app.NotificationManager.IMPORTANCE_LOW));
             }else{
                 channelID = getString(R.string.DEFAULT_CHANNEL_ID);
             }
@@ -449,8 +443,8 @@ public class MainActivity extends AppCompatActivity{
             if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.M){
                 notif.setColor(getColor(R.color.colorAccent));
             }
-            notif.setDeleteIntent(PendingIntent.getBroadcast(MainActivity.this.getApplicationContext(), 0, cancel_intent, 0));
-            notif.addAction(R.drawable.stop_drawable, getString(R.string.stop_attacks), PendingIntent.getBroadcast(MainActivity.this.getApplicationContext(), 0, stop_intent, 0));
+            notif.setDeleteIntent(PendingIntent.getBroadcast(MainActivity.this.getApplicationContext(), 0, cancel_intent, PendingIntent.FLAG_IMMUTABLE));
+            notif.addAction(R.drawable.stop_drawable, getString(R.string.stop_attacks), PendingIntent.getBroadcast(MainActivity.this.getApplicationContext(), 0, stop_intent, PendingIntent.FLAG_IMMUTABLE));
             notif.setContentIntent(click_intent);
 
                 //Create 'error' notification (used by watchdog)
@@ -476,23 +470,6 @@ public class MainActivity extends AppCompatActivity{
             publishProgress(getString(R.string.loading_strings));
             ST.not_connected = getString(R.string.not_connected);
             ST.paired = getString(R.string.paired) + ' ';
-
-            //Check permissions
-            publishProgress(getString(R.string.checking_permissions));
-            ActivityCompat.requestPermissions(MainActivity.this, new String[]{
-                    Manifest.permission.CHANGE_WIFI_STATE,
-                    Manifest.permission.ACCESS_WIFI_STATE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.ACCESS_NETWORK_STATE,
-                    Manifest.permission.INTERNET
-            }, 0);
-            //Wait for permission request to be completed
-            try{
-                synchronized(MainActivity.this){
-                    MainActivity.this.wait();
-                }
-            }catch(InterruptedException ignored){}
 
             //Check for su
             publishProgress(getString(R.string.checking_su));
@@ -528,131 +505,13 @@ public class MainActivity extends AppCompatActivity{
                 return false;
             }
 
-            //Setup tools (requires root)
-            publishProgress(getString(R.string.setting_up_tools));
-            if(arch.equals("armv7l") || arch.equals("aarch64")) {
-                String tools_location = path + "/bin/";
-                String lib_location = path + "/lib/";
-
-                //Create directories
-                File bin = new File(path + "/bin");
-                File lib = new File(path + "/lib");
-                if(!bin.exists()){
-                    if(!bin.mkdir()){
-                        publishProgress(null, getString(R.string.bin_not_created));
-                        errorDialog._wait();
-                        return false;
-                    }
-                }
-                if(!lib.exists()){
-                    if(!lib.mkdir()){
-                        publishProgress(null, getString(R.string.lib_not_created));
-                        errorDialog._wait();
-                        return false;
-                    }
-                }
-
-                //Extract busybox
-                extract("busybox", tools_location, true);
-                busybox = path + "/bin/busybox";
-
-                //Extract tools
-                boolean install = true;
-                if(bin.list().length==21 && lib.list().length==2 && info!=null){
-                    if(info.versionCode==pref.getInt("tools_version", 0)){
-                        if(debug) Log.d("HIJACKER/SetupTask", "Tools already installed");
-                        install = false;
-                    }else{
-                        File manufDB = new File(manufDBFile);
-                        if(manufDB.exists()) manufDB.delete();
-                    }
-                }
-                if(install){
-                    extract("airbase-ng", tools_location, true);
-                    extract("aircrack-ng", tools_location, true);
-                    extract("aireplay-ng", tools_location, true);
-                    extract("airodump-ng", tools_location, true);
-                    extract("besside-ng", tools_location, true);
-                    extract("ivstools", tools_location, true);
-                    extract("iw", tools_location, true);
-                    extract("iwconfig", tools_location, true);
-                    extract("iwlist", tools_location, true);
-                    extract("iwpriv", tools_location, true);
-                    extract("kstats", tools_location, true);
-                    extract("makeivs-ng", tools_location, true);
-                    extract("mdk3", tools_location, true);
-                    extract("nc", tools_location, true);
-                    extract("packetforge-ng", tools_location, true);
-                    extract("reaver", tools_location, true);
-                    extract("reaver-wash", tools_location, true);
-                    extract("wesside-ng", tools_location, true);
-                    extract("wpaclean", tools_location, true);
-                    extract("libfakeioctl.so", lib_location, true);
-                    extract("libnexmon.so", lib_location, true);
-
-                    runOne("cd " + path + "/bin; mv mdk3 mdk3bf; cp mdk3bf mdk3dos");
-
-                    if(info!=null){
-                        pref_edit.putInt("tools_version", info.versionCode);
-                        pref_edit.apply();
-                    }
-                }
-
-                //Detect device chipset
-                publishProgress(getString(R.string.detecting_device_chipset));
-                Shell shell = getFreeShell();
-
-                String firmwarePath = findFirmwarePath(shell);
-                if(firmwarePath!=null){
-                    //Get chipset from firmware file
-                    shell.run("strings " + firmwarePath + " | " + busybox + " grep \"FWID:\"; echo ENDOFSTRINGS");
-                    devChipset = getLastLine(shell.getShell_out(), "ENDOFSTRINGS");
-                    int index = devChipset.indexOf('-');
-                    if(index != -1){
-                        devChipset = devChipset.substring(0, index);
-                    }
-                }
-                Log.i("HIJACKER/DetectDev", "devChipset is " + devChipset);
-                shell.done();
-
-                //Set directories
-                prefix = "LD_PRELOAD=" + path + "/lib/";
-                if(devChipset.startsWith("4339")) {
-                    //BCM4339
-                    prefix += "libfakeioctl.so";
-                }else if(devChipset.startsWith("4358")){
-                    //BCM4358
-                    prefix += "libnexmon.so";
-                }else{
-                    //Default (detected but not included)
-                    SettingsFragment.allow_prefix = true;       //Allow user to change the prefix
-                    prefix = pref.getString("prefix", null);    //Use user-set prefix
-
-                    if(prefix==null){
-                        //No user-set prefix, use default
-                        prefix = "LD_PRELOAD=" + path + "/lib/libfakeioctl.so";
-                    }
-                }
-
-                airodump_dir = path + "/bin/airodump-ng";
-                aireplay_dir = path + "/bin/aireplay-ng";
-                aircrack_dir = path + "/bin/aircrack-ng";
-                mdk3bf_dir = path + "/bin/mdk3bf";
-                mdk3dos_dir = path + "/bin/mdk3dos";
-                reaver_dir = path + "/bin/reaver";
-            }else{
-                Log.e("HIJACKER/onCreate", "Device not armv7l or aarch64, can't install tools");
-                busybox = "busybox";
-                publishProgress(null, getString(R.string.not_arm));
+            // QCA tools are validated in the ARM64 NetHunter chroot per operation.
+            try {
+                QcaBackend.initialize(MainActivity.this);
+            } catch (IOException error) {
+                publishProgress(null, error.toString());
                 errorDialog._wait();
-
-                prefix = pref.getString("prefix", prefix);
-                airodump_dir = "airodump-ng";
-                aireplay_dir = "aireplay-ng";
-                aircrack_dir = "aircrack-ng";
-                mdk3bf_dir = "mdk3";
-                mdk3dos_dir = "mdk3";
-                reaver_dir = "reaver";
+                return false;
             }
 
             //Initialize RootFile (requires root) and Airodump
@@ -792,7 +651,7 @@ public class MainActivity extends AppCompatActivity{
 
             //Start background service so the app won't get killed if it goes to the background
             publishProgress(getString(R.string.starting_pers_service));
-            startService(new Intent(MainActivity.this, PersistenceService.class));
+            // Radio jobs use QcaRadioService only while a bounded job is running.
 
             //Load manufacturer HashMap
             publishProgress(getString(R.string.loading_manuf_db));
@@ -897,15 +756,8 @@ public class MainActivity extends AppCompatActivity{
 
             //Delete old report, it's not needed if no exception is thrown up to this point (requires storage access)
             publishProgress(getString(R.string.deleting_bug_report));
-            File report = new File(Environment.getExternalStorageDirectory() + "/report.txt");
+            File report = new File(getFilesDir(), "report.txt");
             if(report.exists()) report.delete();
-
-            //Show FirstRunDialog
-            if(customDialog!=null){
-                FirstRunDialog frDialog = new FirstRunDialog();
-                frDialog.show(getFragmentManager(), "FirstRunDialog");
-                frDialog._wait();
-            }
 
             return true;
         }
@@ -946,18 +798,9 @@ public class MainActivity extends AppCompatActivity{
 
             loadingDialog.dismissAllowingStateLoss();
 
-            if(customDialog!=null)
-                mDrawerLayout.openDrawer(GravityCompat.START);
+            QcaBackend.ready(MainActivity.this);
 
-            //Start
-            runOne(enable_monMode);
-            stop(PROCESS_AIRODUMP);
-            stop(PROCESS_AIREPLAY);
-            stop(PROCESS_MDK_BF);
-            stop(PROCESS_MDK_DOS);
-            stop(PROCESS_AIRCRACK);
-            stop(PROCESS_REAVER);
-            if(airOnStartup) Airodump.startClean();
+            // Start is explicit; opening the app never changes radio state.
         }
     }
 
@@ -984,6 +827,7 @@ public class MainActivity extends AppCompatActivity{
     }
 
     public static void _startAireplay(final String str){
+        if (QcaBackend.enabled()) { QcaBackend.unsupported(); return; }
         try{
             String cmd = "su -c " + prefix + " " + aireplay_dir + " -D --ignore-negative-one " + str + " " + iface;
             if(debug) Log.d("HIJACKER/_startAireplay", cmd);
@@ -1000,16 +844,19 @@ public class MainActivity extends AppCompatActivity{
         });
     }
     public static void startAireplay(String mac){
+        if (QcaBackend.enabled()) { QcaBackend.unsupported(); return; }
         //Disconnect all clients from mac
         aireplay_running = AIREPLAY_DEAUTH;
         _startAireplay("--deauth 0 -a " + mac);
     }
     public static void startAireplay(String target, String client){
+        if (QcaBackend.enabled()) { QcaBackend.unsupported(); return; }
         //Disconnect client client from ap target
         aireplay_running = AIREPLAY_DEAUTH;
         _startAireplay("--deauth 0 -a " + target + " -c " + client);
     }
     public static void startAireplayWEP(AP ap){
+        if (QcaBackend.enabled()) { QcaBackend.unsupported(); return; }
         //Increase IV generation from ap mac to crack a wep network
         aireplay_running = AIREPLAY_WEP;
         _startAireplay("--fakeauth 0 -a " + ap.mac + (ap.isHidden() ? "" : " -e " + ap.getESSID()));
@@ -1019,6 +866,7 @@ public class MainActivity extends AppCompatActivity{
 
     //There are 2 mdk3 binaries with different names, so the app can easily stop each one separately
     public static void startBeaconFlooding(String str){
+        if (QcaBackend.enabled()) { QcaBackend.unsupported(); return; }
         try{
             String cmd = "su -c " + prefix + " " + mdk3bf_dir + " " + iface + " b -m ";
             if(str!=null) cmd += str;
@@ -1038,6 +886,7 @@ public class MainActivity extends AppCompatActivity{
         });
     }
     public static void startAdos(String str){
+        if (QcaBackend.enabled()) { QcaBackend.unsupported(); return; }
         try{
             String cmd = "su -c " + prefix + " " + mdk3dos_dir + " " + iface + " a -m";
             cmd += str==null ? "" : " -i " + str;
@@ -1105,6 +954,7 @@ public class MainActivity extends AppCompatActivity{
             }
     }
     public static void stop(int pr){
+        if (QcaBackend.enabled()) { if (pr == PROCESS_AIRODUMP) Airodump.stop(); return; }
         if(debug) Log.d("HIJACKER/stop", "stop(" + pr + ") called");
         last_action = System.currentTimeMillis();
         switch(pr){
@@ -1252,6 +1102,7 @@ public class MainActivity extends AppCompatActivity{
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item){
+        if (QcaBackend.enabled() && QcaBackend.onMenu(this, item.getItemId())) return true;
         switch(item.getItemId()){
             case android.R.id.home:
                 mDrawerLayout.openDrawer(GravityCompat.START);
@@ -1308,7 +1159,7 @@ public class MainActivity extends AppCompatActivity{
         super.onResume();
         notif_on = false;
         background = false;
-        if(mNotificationManager!=null) mNotificationManager.cancelAll();
+        if(mNotificationManager!=null && !QcaBackend.enabled()) mNotificationManager.cancelAll();
     }
     @Override
     protected void onPause(){
@@ -1326,7 +1177,7 @@ public class MainActivity extends AppCompatActivity{
     @Override
     protected void onDestroy(){
         notif_on = false;
-        mNotificationManager.cancelAll();
+        if (!QcaBackend.enabled()) mNotificationManager.cancelAll();
         CustomAction.save();
         if(watchdogTask!=null) watchdogTask.cancel(true);
         try{
@@ -1344,7 +1195,7 @@ public class MainActivity extends AppCompatActivity{
         Shell.exitAll();
         stopService(new Intent(this, PersistenceService.class));
         super.onDestroy();
-        System.exit(0);
+        if (!QcaBackend.enabled()) System.exit(0);
     }
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event){
@@ -1380,10 +1231,12 @@ public class MainActivity extends AppCompatActivity{
             menu.getItem(1).setTitle(R.string.stop);
         }
         menu.getItem(3).setEnabled(false);
+        QcaBackend.configureMenu(menu);
         return true;
     }
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if(requestCode==0){
             //The one and only request this app sends
             synchronized(this){
@@ -1941,6 +1794,6 @@ public class MainActivity extends AppCompatActivity{
     }
 
     static{
-        System.loadLibrary("native-lib");
+        // The upstream JNI terminal parser is unused by the CSV backend.
     }
 }

@@ -1,121 +1,63 @@
-# Hijacker
+# Hijacker QCA Lab
 
-Hijacker is a Graphical User Interface for the penetration testing tools [Aircrack-ng, Airodump-ng](https://www.aircrack-ng.org/), [MDK3](https://tools.kali.org/wireless-attacks/mdk3) and [Reaver](https://tools.kali.org/wireless-attacks/reaver). It offers a simple and easy UI to use these tools without typing commands in a console and copy&pasting MAC addresses.
+An experimental fork of [Hijacker](https://github.com/chrisk44/Hijacker/tree/898af5b530dd000b8251f21da94626d9e41e53d2) for the **OnePlus 13 internal Wi-Fi radio**.
 
-This application requires an **ARM** android device with an internal wireless adapter that supports **Monitor Mode**. A few android devices do, but none of them natively. This means that you will need a custom firmware. Any device that uses the BCM4339 chipset (MSM8974, such as Nexus 5, Xperia Z1/Z2, LG G2, LG G Flex, Samsung Galaxy Note 3) will work with [Nexmon](https://github.com/seemoo-lab/nexmon) (which also supports some other chipsets). Devices that use BCM4330 can use [bcmon](http://bcmon.blogspot.gr/).
+**Host-built prototype: this Hijacker APK has not yet been validated on a phone.** The underlying radio paths were demonstrated separately in [the research repository](https://github.com/Bender1011001/oneplus13-internal-wifi-research). Those results do not establish application-level success. See [VALIDATION.md](VALIDATION.md).
 
-An alternative would be to use an external adapter that supports **monitor mode** in Android with an OTG cable.
+| Feature | Mechanism | Current limit |
+|---|---|---|
+| Passive AP/client display and capture | QCA `con_mode=4` recreates `wlan0` as a radiotap netdev; NetHunter ARM64 `airodump-ng` produces CSV/pcap | Channel 6, up to 60 seconds |
+| Selected-client lab action | Root `NL80211_CMD_FRAME` on managed `wlan0`, after capture stops and mode 0 is restored | One directed deauthentication request; no automatic retry |
+| Recovery and export | Foreground service, root supervisor, persistent recovery record, session ZIP | Host-tested control flow; Android behavior pending |
 
-The required tools are included for **ARM** devices.
-The Nexmon firmware and management utility for **BCM4339** and **BCM4358** are also included.
+This does **not** add general monitor-mode TX, aireplay injection, channel hopping, Reaver, MDK, simultaneous RX/TX, or a PMF bypass. Unsupported tool controls are hidden or blocked. The independent [negative aireplay test](https://github.com/Bender1011001/oneplus13-internal-wifi-research/blob/main/docs/AIREPLAY_TEST.md) remains valid.
 
-Root access is also necessary, as these tools need root to work.
+## Required profile
 
-## Discontinued
-The app has been discontinued since a completely new iteration is currently under development. Since the new version will not be available for a long time, this repo remains open for recommendations and feature requests which will be implemented in the new version. Critical changes may still be provided, along with help for building, maintaining, and updating the code (though I wouldn't recomment it). Bug reports are also welcome as long as they come from the latest released version, since some of this code might be used in the new project. 
+The supervisor checks model, build and module hash before a normal operation:
 
+- OnePlus **CPH2655**, Android 16 build **CPH2655_16.0.8.301(EX01)**.
+- Underlying tested kernel: `6.6.89-android15-8-g97a9aaefab9a-ab14519050-4k`.
+- `/vendor_dlkm/lib/modules/qca_cld3_peach_v2.ko`, SHA-256 `d6bd3fac600aaeba858e83292df167bc410457c07e422047c1a181c31d24d3df`.
+- Root through `su`. The underlying experiment used Magisk; KernelSU is untested with this fork.
+- Running ARM64 NetHunter chroot at `/data/local/nhsystem/kali-arm64`, working proc/sys/dev mounts, Python 3 and `/usr/sbin/airodump-ng`. The tool-level test used aircrack-ng 1.7.
+- Android `iw`, `ip`, `svc`, `settings`, `chroot`, `base64`, `sha256sum` and the installed vendor/ODM firmware files.
 
-## Features
-### Information Gathering
-* View a list of access points and stations (clients) around you (even hidden ones)
-* View the activity of a specific network (by measuring beacons and data packets) and its clients
-* Statistics about access points and stations
-* See the manufacturer of a device (AP or station) from the OUI database
-* See the signal power of devices and filter the ones that are closer to you
-* Save captured packets in .cap file
+Firmware is copied unchanged from the installed build into a temporary loader directory. No downloaded firmware, replacement driver, flashing operation, Nexmon preload, external adapter or legacy ARMv7 executable is packaged. Root is required for radio/netlink operations, not merely for CSV parsing. A Snapdragon 8 Elite or GKI 6.6 label alone does not establish compatibility.
 
-### Attacks
-* **Deauthenticate** all the clients of a network (either targeting each one (effective) or without specific target)
-* Deauthenticate a specific client from the network it's connected
-* MDK3 **Beacon Flooding** with custom options and SSID list
-* MDK3 **Authentication DoS** for a specific network or to every nearby AP
-* Capture a **WPA handshake** or gather **IVs** to crack a WEP network
-* **Reaver WPS** cracking (pixie-dust attack using NetHunter chroot and external adapter)
+## Build
 
-### Other
-* Leave the app running in the background, optionally with a notification
-* Copy commands or MAC addresses to clipboard
-* Includes the required tools, no need for manual installation
-* Includes the Nexmon driver, required library and management utility for BCM4339 and BCM4358 devices
-* Set commands to enable and disable monitor mode automatically
-* **Crack .cap files** with a custom wordlist
-* Create **custom actions** and run them on an access point or a client easily
-* Sort and filter Access Points and Stations with many parameters
-* Export all gathered information to a file
-* Add a persistent **alias** to a device (by MAC) for easier identification
+Use JDK 17 and Android SDK Platform 35; configure `sdk.dir` in ignored `local.properties` or set `ANDROID_HOME`. The wrapper uses Gradle 8.10.2 and AGP 8.7.3.
 
-<img src="https://github.com/chrisk44/Hijacker/raw/master/screenshots/airodump_view.png" width="256" hspace="2"><img src="https://github.com/chrisk44/Hijacker/raw/master/screenshots/mdk_view.png" width="256" hspace="2"><img src="https://github.com/chrisk44/Hijacker/raw/master/screenshots/reaver_view.png" width="256" hspace="2">
+```sh
+./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+python -m unittest discover -s tests -v
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
-[More Screenshots](https://github.com/chrisk44/Hijacker/tree/master/screenshots)
+On Windows use `gradlew.bat`. Host tests require Python 3.10+ and Bash (Git for Windows Bash on Windows). They mock device interfaces and never transmit frames.
 
-## Installation
-Make sure:
-* you are on Android 5+
-* you are rooted
-* you have a firmware to support Monitor Mode on your wireless interface
+Application: **Hijacker QCA Lab**, `dev.sir.hijackerqca`, version `1.5-qca.1`. It installs alongside original Hijacker. A debug build uses your local Android debug key; a differently signed build may require uninstalling the previous one. Export wanted sessions before uninstalling.
 
-#### Download the latest version [here](https://github.com/chrisk44/Hijacker/releases).
+## Intended handset workflow
 
-When you run Hijacker for the first time, you will be asked whether you want to install the nexmon firmware or go to home screen. If you have installed your firmware or use an external adapter, you can just go to the home screen. Otherwise, and if your device is supported, click 'Install Nexmon' to install the Nexmon firmware. When you're done, you will land on the home screen and airodump will start. Make sure you have enabled your WiFi and it's in monitor mode.
+1. Start NetHunter, keep normal Wi-Fi enabled, open the app and grant root. Opening the app does not start capture.
+2. Choose **Check radio and NetHunter** and inspect the result.
+3. Press **Start**, or select a channel-6 AP for capture. Normal Wi-Fi disconnects during capture. AP/client rows should update from the CSV.
+4. Press **Stop** or wait for the 60-second limit. Check the final state. Restoring the Wi-Fi setting does not itself prove reassociation with an AP.
+5. Optionally select a client and choose **Single-frame lab test**. The backend requires explicit authorization, a channel-6 AP/client association observed within 120 seconds, beacons and client traffic, distinct unicast addresses, managed mode and the required advertised feature. Attempts are separated by at least 30 seconds.
+6. Inspect **Latest result / log** and **Export latest session**. Exports contain private MAC addresses and raw packets; review/redact before publishing. The user chooses the Android sharing destination.
 
-##### Note: On some devices, changing files in `/system` might trigger an Android security feature and your system partition will be restored when you reboot.
+Only transmit management frames against hardware you own or are explicitly authorized to test. Choose a noncritical lab client: this can interrupt wireless service. One userspace submission can produce hardware retries. Driver acceptance and a matching ACK are distinct from observed disconnection and do not establish a PMF bypass. A timeout after intent is recorded has an uncertain outcome; it is never automatically retried.
 
-## Troubleshooting
+## Recovery
 
-#### SU binary not found!
+Use **Restore Wi-Fi** after an interrupted session. Saved state is under `/data/local/tmp/hijacker-qca/recovery/`: `pending`, `firmware` and `wifi`. Do not delete the record to bypass recovery or replace the saved loader path with a guess. An empty loader path is restored by writing a newline. Recovery remains available even if normal model/build/chroot checks fail.
 
-Hijacker needs root access to run. It expects a `su` binary file, which is a shell executed with root privileges. On startup, the app runs a `which su` command. If you are getting this message, then this command has failed. Either you are not rooted, or your root solution did not provide a `su` binary in a PATH accessible directory.
+Inspect `radio-state.json`, `completion.json` and the supervisor log. A hard-killed supervisor, kernel failure or Android/SELinux issue may require manual investigation. There is no boot persistence. Root-side stale-child recovery checks the process command line before terminating a PID; no tool-name-wide killing is used.
 
-#### No root access
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for lifecycle and evidence details.
 
-Hijacker needs root access to run. It runs all its commands through `su`. When `su` is called, some app on your device (which manages the root access, e.g. SuperSU, Superuser) should ask you if you want to grant root access to Hijacker. If access is denied, you get this message. Make sure that Hijacker is authorized to run root commands.
+## Credits and license
 
-#### Directory 'bin/lib' could not be created
-
-This means that the app failed to create the 'bin' or 'lib' directories in its own directory within the system. If you see this, something is wrong with your OS, Hijacker can't do anything about this.
-
-#### The architecture of this device is not ARM.
-
-This app is designed and tested for ARM devices. All the included binaries and libraries are compiled for that architecture and will not work on anything else. If you get this message, you have to install them manually ([busybox](https://play.google.com/store/apps/details?id=stericson.busybox&hl=el), aircrack-ng suite, mdk3, reaver, [wireless tools](https://hewlettpackard.github.io/wireless-tools/Tools.html), [libfakeioctl.so](https://github.com/seemoo-lab/nexmon/tree/master/utilities/libfakeioctl) library) **in a PATH accessible directory** and set the 'Prefix' option for the tools to preload the library they need: `LD_PRELOAD=/path/to/libfakeioctl.so`.
-
-#### Hijacker watchdog detected a problem
-
-Hijacker runs a background service to make sure that the tools that are supposed to be running, are actually running, and the tools that are supposed to be stopped, are stopped. In the event one of these checks fails, you will get a warning.
-
-*Something is not running*: This could be caused by a tool stopping unexpectedly, which could be a sign of bad parameters, tool working differently that the app expects, other software on the device killing it, wifi turned off or not in monitor mode, or even a broken tool (if you compiled it manually).
-
-*Something is still running*: This could be caused by a failed 'stop' operation by the app or the tool running on its own (if you have left the app open in the background and you run the tool by yourself). A failed 'stop' operation could be caused by denied root access, or starting the app after it crashed and didn't get a change to run the 'stop' operations (although this shouldn't happen).
-  
-#### Can't open shell to generate the bug report
-
-The app crashed, a new activity came up, and it says it can't open a shell to generate the bug report. This means exactly what it says. It can't open a root shell; it executed `su` and failed. No/denied or improperly configured root access.
-Hijacker needs root access to generate the bug report because it needs to get the device's logfiles, attempt to run the tools to make sure they are installed correctly, read the WiFi firmware, etc.
-
-#### Can\'t create report (external storage write access denied)
-
-Self explanatory.
-
-### Miscellaneous
-
-In settings, there is an option to test the tools. If something goes wrong, you can click 'Copy test command' and select the tool that fails. This will copy a test command to your clipboard, which you can manually run in a **root** shell and see what's wrong. If all the tests pass and you still have a problem, feel free to open an issue here to fix it, or use the 'Send feedback' option in the app's settings.
-
-If the app happens to crash, a new activity will come up with the option to submit a bug report via email. You can see exactly what the report contains, it's a simple text file. This will be very helpful for the development of Hijacker, but keep in mind that the app contains *filtered* device logs, which may contain information like MAC addresses, SSIDs, device details etc.
-
-Keep in mind that Hijacker is just a GUI for these tools. The way it runs the tools is fairly simple, and if all the tests pass and you are in monitor mode, you should be getting the results you want. Also keep in mind that these are **auditing** tools. This means that they are used to **test** the integrity of your network, so there is a chance (and you should hope for it) that the attacks don't work on your network. However, if an attack works when you type a command in a terminal, but not with the app, feel free to post here to resolve the issue. This app is still under development so bugs are to be expected.
-
-#### Do not report bugs for devices that are not supported or when you are using an outdated version.
-
-## Warning
-### Legal
-It is illegal to use this application against networks for which you don't have permission. You can use it only on **your** network or a network that you are authorized to. Using software that uses a network adapter in promiscuous mode may be considered illegal even without actively using it against someone. I am not responsible for how you use this application and any damages you may cause.
-
-### Device
-The app gives you the option to install the Nexmon firmware on your device. Even though the app performs a chipset check, mistakes happen. The app currently includes the Nexmon firmware for BCM4339 and BCM4358 *only*. Installing the wrong firmware on a device may damage it (and I mean hardware, not something that is fixable with factory reset). I am not responsible for any damage caused to you, your device, your house, your cat, or anyne and anything else, by this software.
-
-#### Consider yourself warned.
-
-## Donate
-
-If you like my work, you can buy me a beer. :)
-
-[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=VV5TEHL8S6UQ2)
+Upstream Hijacker is copyright Christos Kyriakopoulos and contributors. This derivative and its new backend are **GPL-3.0-or-later**; see [COPYING](COPYING). The OUI database comes from upstream. Research and port work: [Bender1011001](https://github.com/Bender1011001). Original notices/history and [upstream README](UPSTREAM_README.md) are retained; its feature claims describe the original app, not this fork. This is an independent experimental project, not an official Hijacker or Kali release.

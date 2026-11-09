@@ -1,5 +1,5 @@
 ﻿<resources>
-    <string name="app_name" translatable="false">Hijacker</string>
+    <string name="app_name" translatable="false">Hijacker QCA Lab</string>
     <string name="DEFAULT_CHANNEL_ID" translatable="false">Hijacker_Notification_Channel</string>
 
     <!-- Toolbar -->

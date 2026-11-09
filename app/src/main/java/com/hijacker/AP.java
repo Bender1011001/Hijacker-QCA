@@ -326,6 +326,7 @@ class AP extends Device{
         Tile.filter();
     }
     PopupMenu getPopupMenu(final MainActivity activity, final View v){
+        if (QcaBackend.enabled()) return QcaBackend.apMenu(activity, v, this);
         PopupMenu popup = new PopupMenu(activity, v);
         popup.getMenuInflater().inflate(R.menu.popup_menu, popup.getMenu());
 

@@ -220,6 +220,7 @@ class ST extends Device{
         lost = 0;
     }
     PopupMenu getPopupMenu(final MainActivity activity, final View v){
+        if (QcaBackend.enabled()) return QcaBackend.stationMenu(activity, v, this);
         PopupMenu popup = new PopupMenu(activity, v);
         popup.getMenuInflater().inflate(R.menu.popup_menu, popup.getMenu());
 
