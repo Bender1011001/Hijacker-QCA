@@ -2,3 +2,4 @@
 *.py text eol=lf
 gradlew text eol=lf
 *.bat text eol=crlf
+app/src/qca/assets/* text eol=lf

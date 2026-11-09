@@ -11,13 +11,13 @@ November 9, 2026 · `1.5-qca.1` · `dev.sir.hijackerqca`
 | Seven Python backend tests | Passed: authorization, freshness/association, channel/path checks, one submission, cooldown, timeout, missing/mismatched ACK |
 | Five supervisor tests | Passed: mocked completion/export, transition cancellation, start failure, failed restore with later recovery, unsupported-profile refusal |
 | Android lint | Passed with zero errors and 278 warnings; legacy, deprecation, styling and localization warnings remain |
-| APK inspection | Signature verified; application ID and API 30/35 bounds match; five packaged assets match source; no native libraries or legacy executable assets |
+| APK inspection | Signature verified; application ID and API 30/35 bounds match; five packaged assets match committed source byte-for-byte; no native libraries or legacy executable assets |
 | Install/launch/root prompt | Pending on OnePlus 13 |
 | Live AP/client rows and exported pcap/CSV | Pending in this app |
 | Stop, background handling, app closure and restoration | Pending on Android; host mocks do not validate firmware timing or SELinux |
 | Single-frame result and independently observed effect | Pending in this app; no PMF-bypass claim |
 
-The local debug APK is 14,837,730 bytes, SHA-256 `bb1f93d52cf5164870ea8019d0227930cc5496a73416731fba358715a1d54c20`. This identifies the inspected build, not an on-phone test. Local logs are retained in the ignored `validation/` directory; exported build metadata pairs the APK with its source commit.
+The local debug APK is 14,837,730 bytes, SHA-256 `a0fab223de2eee9b6def41fa9e0bf66f9443624beb790706494186b5b77c97ae`. This identifies the inspected build, not an on-phone test. Local logs are retained in the ignored `validation/` directory; exported build metadata pairs the APK with its source commit.
 
 ## Required handset acceptance
 
